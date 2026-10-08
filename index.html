@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Test collegamento telefono</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px 32px; background: #111418; color: #e8eaed;
+         font: 26px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 34px; margin: 0 0 8px; }
+  p  { margin: 4px 0 16px; color: #aab0b8; }
+  code { background: #232830; padding: 2px 8px; border-radius: 6px; }
+  button { font: inherit; padding: 12px 28px; border-radius: 10px; border: 0;
+           background: #3d7be0; color: #fff; margin-right: 12px; }
+  #log { margin-top: 20px; white-space: pre-wrap; word-break: break-word; }
+  .ok  { color: #5ad17a; }
+  .err { color: #ff7a7a; }
+</style>
+</head>
+<body>
+<h1>Test collegamento telefono</h1>
+<p>Indirizzo da provare: <code id="target">-</code></p>
+<p>Apri questa pagina con l'indirizzo dopo il cancelletto, ad esempio
+<code>#10.112.74.128:8080</code></p>
+<button id="run">Ripeti test</button>
+<div id="log"></div>
+
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function line(text, cls) {
+    var d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = text;
+    logEl.appendChild(d);
+  }
+
+  function run() {
+    logEl.textContent = '';
+    var t = decodeURIComponent(location.hash.slice(1)).trim();
+    document.getElementById('target').textContent = t || '(manca)';
+    line('Pagina caricata da: ' + location.protocol + '//' + location.host);
+    if (!t) { line('Aggiungi #IP:porta in fondo all\'indirizzo.', 'err'); return; }
+    if (location.protocol === 'https:') {
+      line('Attenzione: pagina https. Il WebSocket ws:// verra\' bloccato dal browser (contenuto misto).', 'err');
+    }
+
+    // Prova 1: richiesta HTTP semplice a /ping
+    line('1) HTTP verso http://' + t + '/ping ...');
+    fetch('http://' + t + '/ping', { mode: 'no-cors', cache: 'no-store' })
+      .then(function () { line('1) HTTP: risposta ricevuta', 'ok'); })
+      .catch(function (e) { line('1) HTTP: errore - ' + e, 'err'); });
+
+    // Prova 2: WebSocket verso /ws
+    line('2) WebSocket verso ws://' + t + '/ws ...');
+    var ws, done = false;
+    try { ws = new WebSocket('ws://' + t + '/ws'); }
+    catch (e) { line('2) WebSocket: errore subito - ' + e, 'err'); return; }
+    var timer = setTimeout(function () {
+      if (!done) { done = true; line('2) WebSocket: nessuna risposta in 8 secondi', 'err'); try { ws.close(); } catch (e) {} }
+    }, 8000);
+    ws.onopen = function () {
+      if (done) return; done = true; clearTimeout(timer);
+      line('2) WebSocket: COLLEGATO', 'ok');
+      try { ws.close(); } catch (e) {}
+    };
+    ws.onerror = function () {
+      if (done) return;
+      line('2) WebSocket: errore di connessione', 'err');
+    };
+    ws.onclose = function (ev) {
+      if (done) return; done = true; clearTimeout(timer);
+      line('2) WebSocket chiuso, codice ' + ev.code, 'err');
+    };
+  }
+
+  document.getElementById('run').onclick = run;
+  window.onhashchange = run;
+  run();
+})();
+</script>
+</body>
+</html>
